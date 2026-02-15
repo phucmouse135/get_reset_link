@@ -365,11 +365,19 @@ class AutomationGUI(tk.Tk):
         self._reset_stats()
 
     def _reset_stats(self):
-        self.total_count = 0
-        self.done_count = 0
-        self.success_count = 0
+        success_items = 0
+        
+        for item in self.tree.get_children():
+            values = self.tree.item(item, "values")
+            if values and self._is_success_note(values[-1]):
+                success_items += 1
+                
+        self.success_count = success_items
+        self.success_var.set(str(self.success_count))
+        
+        self.total_count = 0 
+        self.done_count = 0 
         self.progress_var.set("0/0")
-        self.success_var.set("0")
 
     def _is_success_note(self, note):
         if not isinstance(note, str):
@@ -427,7 +435,15 @@ class AutomationGUI(tk.Tk):
 
         self.total_count = len(tasks)
         self.done_count = 0
-        self.success_count = 0
+        
+        # Count existing successes
+        existing_success = 0
+        for item in items:
+            values = list(self.tree.item(item, "values"))
+            if values and self._is_success_note(values[-1]):
+                existing_success += 1
+                
+        self.success_count = existing_success
         self.progress_var.set(f"{self.done_count}/{self.total_count}")
         self.success_var.set(str(self.success_count))
 
@@ -521,7 +537,7 @@ class AutomationGUI(tk.Tk):
                     max_threads=max_threads
                 )
                 success = True
-                final_msg = "SUCCESS"  # Updated to uppercase as requested/implied standard
+                final_msg = "Success"  # Updated to uppercase as requested/implied standard
             except Exception as exc:
                 success = False
                 error_msg = str(exc)
