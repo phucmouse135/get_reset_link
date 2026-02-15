@@ -29,6 +29,7 @@ class AutomationGUI(tk.Tk):
 
         self.file_path_var = tk.StringVar()
         self.threads_var = tk.IntVar(value=2)
+        self.mode_var = tk.StringVar(value="All")  # Added mode variable
         self.headless_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready")
         self.progress_var = tk.StringVar(value="0/0")
@@ -57,14 +58,20 @@ class AutomationGUI(tk.Tk):
             line_content = f"{uid}\t{mail}\t{password}\t{status}\t{message}"
             
             # Xác định file để ghi dựa trên status
-            is_success = status == "success"
-            filename = "success.txt" if is_success else "fail.txt"
+            if status == "success":
+                filename = "success.txt"
+            elif status == "fail":
+                filename = "fail.txt"
+            else:
+                # For "done_step" or others, just log to output.txt, no specific file
+                filename = None 
             
             with _FILE_LOCK: # Khóa file để các luồng không ghi đè nhau
-                with open(filename, "a", encoding="utf-8") as f:
-                    f.write(line_content + "\n")
-                    f.flush()
-                    os.fsync(f.fileno()) # Ép ghi xuống ổ cứng ngay
+                if filename:
+                    with open(filename, "a", encoding="utf-8") as f:
+                        f.write(line_content + "\n")
+                        f.flush()
+                        os.fsync(f.fileno()) # Ép ghi xuống ổ cứng ngay
                     
                 # Vẫn ghi vào output.txt như cũ để tương thích
                 with open("output.txt", "a", encoding="utf-8") as f:
@@ -130,11 +137,21 @@ class AutomationGUI(tk.Tk):
             row=0, column=2, padx=10, pady=5
         )
 
+        ttk.Label(frame, text="Mode").grid(row=0, column=3, padx=5, pady=5)
+        mode_cb = ttk.Combobox(
+            frame, 
+            textvariable=self.mode_var, 
+            values=["Get Link", "Check Mail", "All"], 
+            state="readonly", 
+            width=10
+        )
+        mode_cb.grid(row=0, column=4, padx=5, pady=5)
+
         ttk.Button(frame, text="Delete Selected", command=self.delete_selected).grid(
-            row=0, column=3, padx=10, pady=5
+            row=0, column=5, padx=10, pady=5
         )
         ttk.Button(frame, text="Delete All", command=self.delete_all).grid(
-            row=0, column=4, padx=5, pady=5
+            row=0, column=6, padx=5, pady=5
         )
 
     def _build_table(self):
@@ -444,8 +461,14 @@ class AutomationGUI(tk.Tk):
                 existing_success += 1
                 
         self.success_count = existing_success
-        self.progress_var.set(f"{self.done_count}/{self.total_count}")
-        self.success_var.set(str(self.success_count))
+        
+        mode = self.mode_var.get().replace(" ", "_").lower()
+        if mode == "all":
+             mode = "all"
+        elif "get" in mode:
+             mode = "get_link"
+        elif "check" in mode:
+             mode = "check_mail"
 
         self.stop_event.clear()
         self.task_queue = queue.Queue()
@@ -455,7 +478,7 @@ class AutomationGUI(tk.Tk):
         worker_count = max(1, int(self.threads_var.get()))
         self.workers = []
         for i in range(worker_count):
-            thread = threading.Thread(target=self._worker, args=(i, worker_count), daemon=True)
+            thread = threading.Thread(target=self._worker, args=(i, worker_count, mode), daemon=True)
             thread.start()
             self.workers.append(thread)
 
@@ -485,7 +508,7 @@ class AutomationGUI(tk.Tk):
         self.progress_var.set(f"{self.done_count}/{self.total_count}")
         self.status_var.set("Stopping")
 
-    def _worker(self, thread_id, max_threads):
+    def _worker(self, thread_id, max_threads, mode):
         while True:
             try:
                 task = self.task_queue.get(timeout=0.5)
@@ -526,18 +549,24 @@ class AutomationGUI(tk.Tk):
 
             success = False
             error_msg = ""
+            final_msg = ""
             
             try:
                 # Call the main processing logic
-                process_account(
+                res = process_account(
                     account, 
                     headless=self.headless_var.get(), 
                     status_cb=status_cb, 
                     thread_id=thread_id, 
-                    max_threads=max_threads
+                    max_threads=max_threads,
+                    mode=mode
                 )
-                success = True
-                final_msg = "Success"  # Updated to uppercase as requested/implied standard
+                if res == "success":
+                    success = True
+                    final_msg = "Success"
+                else:
+                    success = True # Technically successful execution of the step
+                    final_msg = res # e.g. "Done: get link"
             except Exception as exc:
                 success = False
                 error_msg = str(exc)
@@ -550,21 +579,69 @@ class AutomationGUI(tk.Tk):
                 new_values[0] = account.ig_user
             
             # If success, update PASS_IG with PASS_MAIL (as requested/implied usually? or just keep old?)
-            # The prompt didn't explicitly say to copy pass_mail to pass_ig, but previous code did:
-            # "pass_mail = values[4] ... values[1] = pass_mail"
-            if success:
+            # Only update pass if it is a full success (meaning we found the mail)
+            # If mode is "get_link", we didn't find the mail, so we probably shouldn't update the pass yet?
+            # Or maybe we should? The original code did: new_values[1] = values[4]
+            # Since the user specifically asked for "Done: get link", I'll assume only "Success" updates the password?
+            # Actually, let's keep it safe. If final_msg is "Success", update.
+            if final_msg == "Success":
                  new_values[1] = values[4] # Set IG Pass = Mail Pass
 
             new_values[-1] = final_msg
 
             # Save result live
-            status_str = "success" if success else "fail"
-            self._save_live_result(new_values, status_str, final_msg)
+            # Only save to success.txt if it is a REAL success (found mail)
+            # If "Done: get link", we probably don't want it in success.txt? 
+            # The prompt says: "chạy xong check mail mới đánh là success"
+            status_for_file = "success" if final_msg == "Success" else "fail"
+            
+            # Special case: if mode is get_link and it finished without error,
+            # status_for_file would be "fail" (so it goes to fail.txt or output.txt?)
+            # Or maybe we just log it to output.txt but not success/fail specifically?
+            # _save_live_result writes to success.txt if status=="success".
+            # For "Done: get link", let's treat it as NOT success for the file log purpose, 
+            # OR create a new file? The user didn't ask for a new file.
+            # I will assume "fail" for "Done: get link" so it doesn't pollute success.txt, 
+            # but that puts it in fail.txt.
+            
+            # Let's look at _save_live_result...
+            # It blindly writes based on status.
+            # If I pass "success", it goes to success.txt.
+            # If I pass anything else, it goes to fail.txt.
+            
+            # If the user runs "Get Link", they probably don't want "Done: get link" in fail.txt.
+            # But they definitely don't want it in success.txt.
+            
+            # Let's modify _save_live_result to handle a neutral status?
+            # Or just pass "info"?
+            
+            if final_msg == "Success":
+                status_for_file = "success"
+            elif final_msg.startswith("Done:"):
+                status_for_file = "done_step"
+            else:
+                 status_for_file = "fail"
+
+            self._save_live_result(new_values, status_for_file, final_msg)
 
             # Send done signal to UI
-            self.update_queue.put(("done_row", item_id, success, final_msg, new_values))
+            # We treat success=True in the UI as "Green row".
+            # If "Done: get link", should it be green? 
+            # Usually "Done" implies good.
+            # But the user said: "check mail mới đánh là success".
+            # This implies "Done: get link" should probably not be designated as "Success" (Green).
+            # Maybe just normal white? Or yellow?
+            # The UI logic is: tag = "success" if success else "error" in done_row handler.
+            # I will pass `success` as False if "Done: get link" so it doesn't turn green?
+            # But then it turns red (error). That's bad.
+            
+            # I need to change what I pass to `done_row`.
+            # I will interpret `success` boolean as "Is it the FINAL success?".
+            
+            is_final_success = (final_msg == "Success")
             
             self.task_queue.task_done()
+            self.update_queue.put(("done_row", item_id, is_final_success, final_msg, new_values))
 
         self.update_queue.put(("worker_done",))
 
@@ -590,8 +667,15 @@ class AutomationGUI(tk.Tk):
                     _, item_id, success, message, new_values = msg
                     if self.tree.exists(item_id):
                         # Apply tag
-                        tag = "success" if success else "error"
-                        self.tree.item(item_id, values=new_values, tags=(tag,))
+                        if success:
+                            tag = "success"
+                        elif message.startswith("Done:"):
+                             tag = "" # Neutral
+                        else:
+                             tag = "error"
+                        
+                        tags = (tag,) if tag else ()
+                        self.tree.item(item_id, values=new_values, tags=tags)
                         
                         if success:
                             self.success_count += 1

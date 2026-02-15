@@ -190,29 +190,41 @@ def append_log(filepath, content):
     except Exception as e:
         print(f"[LOG ERROR] Không thể ghi file: {e}")
 
-def process_account(account, headless=False, status_cb=None, thread_id=0, max_threads=6):
-    driver = get_driver(headless=headless, thread_id=thread_id, max_threads=max_threads)
-    try:
-        if status_cb:
-            status_cb("Step1: open Instagram")
-        ok, err = _retry_call(
-            "Load cookies",
-            lambda: load_instagram_cookies(driver, IG_COOKIE_PATH),
-            retries=3,
-            delay=2,
-            fatal_exceptions=(FileNotFoundError,),
-        )
-        if not ok:
-            raise RuntimeError(f"Cookie load failed: {err}")
-        _clear_reset_cache(driver)
-
-        if status_cb:
-            status_cb("Step2: Forgot Password")
+def process_account(account, headless=False, status_cb=None, thread_id=0, max_threads=6, mode="all"):
+    """
+    mode: "all", "get_link", "check_mail"
+    """
+    if mode == "check_mail":
+        # Skip driver initialization for check_mail only
+        driver = None
+    else:
+        driver = get_driver(headless=headless, thread_id=thread_id, max_threads=max_threads)
         
-        try:
-            execute_step_forgot_password(driver, account.mail_login)
-        except Exception as e:
-            raise RuntimeError(f"Forgot password action failed: {str(e)}")
+    try:
+        if mode != "check_mail":
+             if status_cb:
+                 status_cb("Step1: open Instagram")
+             ok, err = _retry_call(
+                 "Load cookies",
+                 lambda: load_instagram_cookies(driver, IG_COOKIE_PATH),
+                 retries=3,
+                 delay=2,
+                 fatal_exceptions=(FileNotFoundError,),
+             )
+             if not ok:
+                 raise RuntimeError(f"Cookie load failed: {err}")
+             _clear_reset_cache(driver)
+
+             if status_cb:
+                 status_cb("Step2: Forgot Password")
+             
+             try:
+                 execute_step_forgot_password(driver, account.mail_login)
+             except Exception as e:
+                 raise RuntimeError(f"Forgot password action failed: {str(e)}")
+             
+             if mode == "get_link":
+                 return "Done: get link"
 
         if status_cb:
             status_cb("Step3: check mail (IMAP)")
@@ -239,10 +251,11 @@ def process_account(account, headless=False, status_cb=None, thread_id=0, max_th
 
         return "success"
     finally:
-        try:
-            driver.quit()
-        except Exception:
-            pass
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
 
 
 def main():
