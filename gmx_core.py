@@ -94,6 +94,9 @@ def get_driver(headless=False, proxy_port=None, thread_id=0, max_threads=6):
     """
     options = Options()
     
+    # Mobile emulation for phone mode
+    options.add_experimental_option("mobileEmulation", {"deviceName": "iPhone X"})
+    
     # --- Proxy ---
     if proxy_port:
         proxy_server = f"http://{PROXY_HOST}:{proxy_port}"

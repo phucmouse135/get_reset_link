@@ -302,3 +302,55 @@ Symbols not available. Dumping unresolved backtrace:
 	autobili@seznam.cz	hep59BV04ga1@@	fail	Error: Mail check fail: Fail: Timeout - Reset Mail not found
 	vikaslime@seznam.cz	hep59BV04ga1@@	fail	Error: Mail check fail: Fail: Timeout - Reset Mail not found
 	jdkslala@seznam.cz	hep59BV04ga1@@	fail	Error: Mail check fail: Fail: Timeout - Reset Mail not found
+	kna22@seznam.cz	hep59BV04ga1@@	fail	Error: Forgot password action failed: Message: 
+Stacktrace:
+Symbols not available. Dumping unresolved backtrace:
+	0xf28543
+	0xf28584
+	0xd1b4e0
+	0xd6594a
+	0xd65beb
+	0xda7bb2
+	0xd88264
+	0xda53a1
+	0xd87fb6
+	0xd596f9
+	0xd5a4b4
+	0x117d034
+	0x11782c9
+	0x1196460
+	0xf41a68
+	0xf4988d
+	0xf30df8
+	0xf30fc2
+	0xf1ab3a
+	0x75595d49
+	0x76ecd83b
+	0x76ecd7c1
+
+	kna22@seznam.cz	hep59BV04ga1@@	fail	Error: Forgot password action failed: Error entering recovery code: Message: 
+Stacktrace:
+Symbols not available. Dumping unresolved backtrace:
+	0xf28543
+	0xf28584
+	0xd1b4e0
+	0xd6594a
+	0xd65beb
+	0xda7bb2
+	0xd88264
+	0xda53a1
+	0xd87fb6
+	0xd596f9
+	0xd5a4b4
+	0x117d034
+	0x11782c9
+	0x1196460
+	0xf41a68
+	0xf4988d
+	0xf30df8
+	0xf30fc2
+	0xf1ab3a
+	0x75595d49
+	0x76ecd83b
+	0x76ecd7c1
+

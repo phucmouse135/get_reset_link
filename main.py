@@ -153,18 +153,19 @@ def process_line(driver, line):
         return False, f"Cookie load failed: {err}", current_user
     _clear_reset_cache(driver)
 
-    # Step 2: Trigger Forgot Password on IG
+    # Step 2: Trigger Forgot Password on IG and Get Code
     try:
-        execute_step_forgot_password(driver, email)
+        # Pass mail_pass to execute_step_forgot_password to handle the full flow
+        execute_step_forgot_password(driver, email, password)
     except Exception as e:
-        return False, f"Forgot Password Step Failed: {str(e)}", current_user
+        return False, f"Forgot Password Flow Failed: {str(e)}", current_user
 
-    # Step 3: Check Mail for Link
+    # Step 3: Check Mail for verify
     # Note: mail_handler.verify_account_live uses IMAP PEEK so it reads without marking as seen.
     getlink_result = mail_handler.verify_account_live(email, password)
     if not (isinstance(getlink_result, str) and getlink_result.startswith("success")):
-        return False, f"Get link fail: {getlink_result}", current_user
-
+         return False, f"Get link mail fail: {getlink_result}", current_user
+         
     return True, "SUCCESS", ig_user
 
 
@@ -219,36 +220,16 @@ def process_account(account, headless=False, status_cb=None, thread_id=0, max_th
                  status_cb("Step2: Forgot Password")
              
              try:
-                 execute_step_forgot_password(driver, account.mail_login)
+                 execute_step_forgot_password(driver, account.mail_login, account.mail_pass)
              except Exception as e:
                  raise RuntimeError(f"Forgot password action failed: {str(e)}")
              
              if mode == "get_link":
-                 return "Done: get link"
+                 return "Done: get link and verify code"
 
         if status_cb:
-            status_cb("Step3: check mail (IMAP)")
+            status_cb("Done: Found Mail and Verified Code.")
         
-        # Check mail live (uses IMAP PEEK -> UNSEEN)
-        getlink_result = mail_handler.verify_account_live(account.mail_login, account.mail_pass)
-        if not (isinstance(getlink_result, str) and getlink_result.startswith("success")):
-            raise RuntimeError(f"Mail check fail: {getlink_result}")
-
-        # Parse info just to be sure we found it
-        ig_user_found = ""
-        link = ""
-        for part in getlink_result.split("|"):
-            if part.startswith("USER="):
-                ig_user_found = part.split("=", 1)[1]
-            if part.startswith("LINK="):
-                link = part.split("=", 1)[1]
-        
-        if ig_user_found and not account.ig_user:
-            account.ig_user = ig_user_found
-        
-        if status_cb:
-            status_cb(f"Found Mail. OK.")
-
         return "success"
     finally:
         if driver:

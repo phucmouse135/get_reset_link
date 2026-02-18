@@ -16,6 +16,7 @@ TARGET_SUBJECT = "we've made it easy to get back on instagram"
 # --- REGEX & CONFIG ---
 RE_USER_HI = re.compile(r'Hi\s+([a-zA-Z0-9_.]+),', re.IGNORECASE)
 RE_UID_LINK = re.compile(r'uid=([0-9]{6,30})')
+RE_RECOVERY_CODE = re.compile(r'(\d{8}) is your Instagram recovery code', re.IGNORECASE)
 
 RESET_LINK_HREF_HINTS = [
     "instagram.com/accounts/password/reset/confirm",
@@ -154,9 +155,14 @@ def verify_account_live(email_login, password):
                         msg_header = email.message_from_bytes(raw_header)
                         subject = _decode_header_fast(msg_header["Subject"]).lower()
 
-                        # [LOGIC CHẶT CHẼ] Subject phải chứa đúng chuỗi này mới đi tiếp
-                        if TARGET_SUBJECT not in subject:
-                            continue 
+                        # [LOGIC CHẶT CHẼ] Subject phải chứa đúng chuỗi reset hoặc recovery code mới đi tiếp
+                        if TARGET_SUBJECT not in subject and not RE_RECOVERY_CODE.search(subject):
+                            continue
+                        
+                        # Trích xuất recovery code nếu có
+                        recovery_code = ""
+                        if RE_RECOVERY_CODE.search(subject):
+                            recovery_code = RE_RECOVERY_CODE.search(subject).group(1)
                         
                         # BƯỚC 3: XÉT NỘI DUNG & TRÍCH XUẤT
                         # Dùng BODY.PEEK[] để lấy full content mà vẫn giữ Unread
@@ -182,9 +188,9 @@ def verify_account_live(email_login, password):
                         # Tìm Link (Dùng hàm mạnh mẽ có sẵn của bạn)
                         link_extracted = _extract_reset_link_from_html(body_content)
                         
-                        if user_extracted or uid_extracted or link_extracted:
+                        if user_extracted or uid_extracted or link_extracted or recovery_code:
                             # [CUSTOM LOGIC] Nếu tìm thấy, không đánh dấu đã đọc (đã dùng PEEK nên ok)
-                            found_data = f"success|USER={user_extracted}|UID={uid_extracted}|LINK={link_extracted}"
+                            found_data = f"success|USER={user_extracted}|UID={uid_extracted}|LINK={link_extracted}|CODE={recovery_code}"
                             break # Break vòng for loop mail ID
                     
                     except Exception:
