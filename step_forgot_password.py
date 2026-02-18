@@ -147,10 +147,35 @@ def execute_step_forgot_password(driver, email_login, mail_password=None):
         code_input.send_keys(recovery_code)
         time.sleep(1)
         code_input.send_keys(Keys.ENTER)
-        time.sleep(5) 
         
-        # Verify success? We assume success if no error or if URL changes
-        # check url or for generic "Next" / "New Password" screens
+        # 7. Confirm success
+        # Wait for redirect to homepage (https://www.instagram.com/) AND text "Open Instagram"
+        print("Waiting for success confirmation (Open Instagram)...")
+        success_confirmed = False
+        start_confirm = time.time()
+        
+        while time.time() - start_confirm < 30: # 30s timeout
+            try:
+                curr_url = driver.current_url
+                # Remove trailing slash and params for check
+                clean_url = curr_url.split("?")[0].rstrip("/")
+                
+                # Check for "Open Instagram" context (case insensitive just in case)
+                body_text = driver.page_source
+                
+                if clean_url == "https://www.instagram.com" or "Open Instagram" in body_text:
+                    print("Confirmed: Redirected to Home and found 'Open Instagram'.")
+                    success_confirmed = True
+                    break
+            except:
+                pass
+            time.sleep(2)
+            
+        if not success_confirmed:
+             print(f"Warning: Did not get exact confirmation. URL: {driver.current_url}")
+             # Optional: raise exception if strict check is required
+             # raise Exception("Failed to confirm success screen.")
+        
         print("Code submitted successfully.")
         
     except Exception as e:

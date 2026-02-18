@@ -610,3 +610,5 @@ Symbols not available. Dumping unresolved backtrace:
 	kna22@seznam.cz	hep59BV04ga1@@	done_step	Done: get link and verify code
 	kna22@seznam.cz	hep59BV04ga1@@	done_step	Done: get link and verify code
 	kna22@seznam.cz	hep59BV04ga1@@	success	Success
+	kna22@seznam.cz	hep59BV04ga1@@	done_step	Done: get link and verify code
+	kna22@seznam.cz	hep59BV04ga1@@	done_step	Done: get link and verify code
