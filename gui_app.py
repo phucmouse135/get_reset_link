@@ -694,7 +694,11 @@ class AutomationGUI(tk.Tk):
         if self.running and self.done_count >= self.total_count:
             self.running = False
             self.status_var.set("Completed")
-            self.stop_event.clear()
+            
+            # Gửi tín hiệu dừng cho các worker để đóng Chrome
+            for _ in self.workers:
+                self.task_queue.put(None)
+            
             messagebox.showinfo("Done", "Process completed!")
 
         self.after(200, self._process_updates)
