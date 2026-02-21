@@ -191,7 +191,7 @@ def append_log(filepath, content):
     except Exception as e:
         print(f"[LOG ERROR] Không thể ghi file: {e}")
 
-def process_account(account, headless=False, status_cb=None, thread_id=0, max_threads=6, mode="all"):
+def process_account(account, headless=False, status_cb=None, thread_id=0, max_threads=6, mode="all", existing_driver=None):
     """
     mode: "all", "get_link", "check_mail"
     """
@@ -199,7 +199,11 @@ def process_account(account, headless=False, status_cb=None, thread_id=0, max_th
         # Skip driver initialization for check_mail only
         driver = None
     else:
-        driver = get_driver(headless=headless, thread_id=thread_id, max_threads=max_threads)
+        # Use existing driver if provided, otherwise create new
+        if existing_driver:
+            driver = existing_driver
+        else:
+            driver = get_driver(headless=headless, thread_id=thread_id, max_threads=max_threads)
         
     try:
         if mode != "check_mail":
@@ -232,7 +236,8 @@ def process_account(account, headless=False, status_cb=None, thread_id=0, max_th
         
         return "success"
     finally:
-        if driver:
+        # Only quit driver if we created it locally
+        if driver and not existing_driver:
             try:
                 driver.quit()
             except Exception:

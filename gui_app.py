@@ -509,139 +509,140 @@ class AutomationGUI(tk.Tk):
         self.status_var.set("Stopping")
 
     def _worker(self, thread_id, max_threads, mode):
-        while True:
-            try:
-                task = self.task_queue.get(timeout=0.5)
-            except queue.Empty:
-                if self.stop_event.is_set():
-                    break
-                continue
-
-            if task is None:
-                self.task_queue.task_done()
-                break
-
-            item_id, values = task
-            if self.stop_event.is_set():
-                self.task_queue.task_done()
-                continue
-            
-            # Update status to Running
-            self.update_queue.put(("update_note", item_id, "Running..."))
-
-            # Define status callback for process_account
-            def status_cb(message):
-                # If message is just status text
-                if message.startswith("USER="):
-                    # Special handling for User update if needed
+        # Driver persistence for the worker thread
+        driver = None
+        
+        # Helper to safely close driver
+        def close_driver(d):
+            if d:
+                try:
+                    d.quit()
+                except Exception:
                     pass
-                self.update_queue.put(("update_note", item_id, message))
 
-            # Create Account object
-            # Note: values layout based on COLUMNS:
-            # USER(0), PASS_IG(1), 2FA(2), PHÔI_GỐC(3), PASS_MAIL(4), ...
-            account = Account(
-                uid=values[0],
-                mail_login=values[3],
-                ig_user=values[0], 
-                mail_pass=values[4],
-            )
+        try:
+            while True:
+                try:
+                    task = self.task_queue.get(timeout=0.5)
+                except queue.Empty:
+                    if self.stop_event.is_set():
+                        break
+                    continue
 
-            success = False
-            error_msg = ""
-            final_msg = ""
-            
-            try:
-                # Call the main processing logic
-                res = process_account(
-                    account, 
-                    headless=self.headless_var.get(), 
-                    status_cb=status_cb, 
-                    thread_id=thread_id, 
-                    max_threads=max_threads,
-                    mode=mode
+                if task is None:
+                    self.task_queue.task_done()
+                    break
+
+                item_id, values = task
+                if self.stop_event.is_set():
+                    self.task_queue.task_done()
+                    continue
+                
+                # Verify/Initialize driver if needed
+                if mode != "check_mail":
+                    if driver is None:
+                        from gmx_core import get_driver # Late import to avoid circular dependency if any
+                        try:
+                            # Pass thread_id and max_threads to ensure proper tiling
+                            driver = get_driver(headless=False, thread_id=thread_id, max_threads=max_threads)
+                        except Exception as e:
+                            self.update_queue.put(("update_note", item_id, f"Driver Init Error: {e}"))
+                            self.task_queue.task_done()
+                            continue
+                    else:
+                        # Reset driver state for new task
+                        try:
+                            driver.delete_all_cookies()
+                            # Optional: navigate to blank or reset
+                        except Exception:
+                            # If driver is dead, recreate
+                            close_driver(driver)
+                            driver = None
+                            try:
+                                driver = get_driver(headless=False, thread_id=thread_id, max_threads=max_threads)
+                            except Exception as e:
+                                self.update_queue.put(("update_note", item_id, f"Driver Re-Init Error: {e}"))
+                                self.task_queue.task_done()
+                                continue
+
+                # Update status to Running
+                self.update_queue.put(("update_note", item_id, "Running..."))
+
+                # Define status callback for process_account
+                def status_cb(message):
+                    # If message is just status text
+                    if message.startswith("USER="):
+                        # Special handling for User update if needed
+                        pass
+                    self.update_queue.put(("update_note", item_id, message))
+
+                # Create Account object
+                # Note: values layout based on COLUMNS:
+                # USER(0), PASS_IG(1), 2FA(2), PHÔI_GỐC(3), PASS_MAIL(4), ...
+                account = Account(
+                    uid=values[0],
+                    mail_login=values[3],
+                    ig_user=values[0], 
+                    mail_pass=values[4],
                 )
-                if res == "success":
-                    success = True
-                    final_msg = "Success"
-                else:
-                    success = True # Technically successful execution of the step
-                    final_msg = res # e.g. "Done: get link"
-            except Exception as exc:
+
                 success = False
-                error_msg = str(exc)
-                final_msg = f"Error: {error_msg}"
+                error_msg = ""
+                final_msg = ""
+                
+                try:
+                    # Call the main processing logic using existing driver
+                    res = process_account(
+                        account, 
+                        headless=self.headless_var.get(), 
+                        status_cb=status_cb, 
+                        thread_id=thread_id, 
+                        max_threads=max_threads,
+                        mode=mode,
+                        existing_driver=driver 
+                    )
+                    if res == "success":
+                        success = True
+                        final_msg = "Success"
+                    else:
+                        success = True # Technically successful execution of the step
+                        final_msg = res # e.g. "Done: get link"
+                except Exception as exc:
+                    success = False
+                    error_msg = str(exc)
+                    final_msg = f"Error: {error_msg}"
+                    
+                    # If it looks like a driver crash, force reset next time
+                    if "chrome not reachable" in str(exc).lower() or "disconnected" in str(exc).lower():
+                         close_driver(driver)
+                         driver = None
 
-            # Prepare final values for update
-            new_values = list(values)
-            # Update IG User if changed
-            if account.ig_user and account.ig_user != values[0]:
-                new_values[0] = account.ig_user
-            
-            # If success, update PASS_IG with PASS_MAIL (as requested/implied usually? or just keep old?)
-            # Only update pass if it is a full success (meaning we found the mail)
-            # If mode is "get_link", we didn't find the mail, so we probably shouldn't update the pass yet?
-            # Or maybe we should? The original code did: new_values[1] = values[4]
-            # Since the user specifically asked for "Done: get link", I'll assume only "Success" updates the password?
-            # Actually, let's keep it safe. If final_msg is "Success", update.
-            if final_msg == "Success":
-                 new_values[1] = values[4] # Set IG Pass = Mail Pass
+                # Prepare final values for update
+                new_values = list(values)
+                # Update IG User if changed
+                if account.ig_user and account.ig_user != values[0]:
+                    new_values[0] = account.ig_user
+                
+                if final_msg == "Success":
+                     new_values[1] = values[4] # Set IG Pass = Mail Pass
 
-            new_values[-1] = final_msg
+                new_values[-1] = final_msg
 
-            # Save result live
-            # Only save to success.txt if it is a REAL success (found mail)
-            # If "Done: get link", we probably don't want it in success.txt? 
-            # The prompt says: "chạy xong check mail mới đánh là success"
-            status_for_file = "success" if final_msg == "Success" else "fail"
-            
-            # Special case: if mode is get_link and it finished without error,
-            # status_for_file would be "fail" (so it goes to fail.txt or output.txt?)
-            # Or maybe we just log it to output.txt but not success/fail specifically?
-            # _save_live_result writes to success.txt if status=="success".
-            # For "Done: get link", let's treat it as NOT success for the file log purpose, 
-            # OR create a new file? The user didn't ask for a new file.
-            # I will assume "fail" for "Done: get link" so it doesn't pollute success.txt, 
-            # but that puts it in fail.txt.
-            
-            # Let's look at _save_live_result...
-            # It blindly writes based on status.
-            # If I pass "success", it goes to success.txt.
-            # If I pass anything else, it goes to fail.txt.
-            
-            # If the user runs "Get Link", they probably don't want "Done: get link" in fail.txt.
-            # But they definitely don't want it in success.txt.
-            
-            # Let's modify _save_live_result to handle a neutral status?
-            # Or just pass "info"?
-            
-            if final_msg == "Success":
-                status_for_file = "success"
-            elif final_msg.startswith("Done:"):
-                status_for_file = "done_step"
-            else:
-                 status_for_file = "fail"
+                if final_msg == "Success":
+                    status_for_file = "success"
+                elif final_msg.startswith("Done:"):
+                    status_for_file = "done_step"
+                else:
+                     status_for_file = "fail"
 
-            self._save_live_result(new_values, status_for_file, final_msg)
-
-            # Send done signal to UI
-            # We treat success=True in the UI as "Green row".
-            # If "Done: get link", should it be green? 
-            # Usually "Done" implies good.
-            # But the user said: "check mail mới đánh là success".
-            # This implies "Done: get link" should probably not be designated as "Success" (Green).
-            # Maybe just normal white? Or yellow?
-            # The UI logic is: tag = "success" if success else "error" in done_row handler.
-            # I will pass `success` as False if "Done: get link" so it doesn't turn green?
-            # But then it turns red (error). That's bad.
-            
-            # I need to change what I pass to `done_row`.
-            # I will interpret `success` boolean as "Is it the FINAL success?".
-            
-            is_final_success = (final_msg == "Success")
-            
-            self.task_queue.task_done()
-            self.update_queue.put(("done_row", item_id, is_final_success, final_msg, new_values))
+                self._save_live_result(new_values, status_for_file, final_msg)
+                
+                is_final_success = (final_msg == "Success")
+                
+                self.task_queue.task_done()
+                self.update_queue.put(("done_row", item_id, is_final_success, final_msg, new_values))
+        finally:
+            close_driver(driver)
 
         self.update_queue.put(("worker_done",))
 

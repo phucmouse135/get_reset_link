@@ -80,105 +80,88 @@ def execute_step_forgot_password(driver, email_login, mail_password=None):
     except Exception:
         print("Continue button not found or not clickable, proceeding...")
 
-    # 5. Wait for Code from Mail
+    # 5. Check for Code from Mail (First Attempt)
     if not mail_password:
-        print("No mail password provided, skipping code verification step.")
+        print("No mail password provided, skipping mail check.")
         return True
 
-    print("Waiting for recovery code from mail...")
-    # Poll for code
-    recovery_code = None
-    max_wait_time = 60 # wait up to 60s for mail
-    start_wait = time.time()
+    print("Checking for recovery mail (Attempt 1)...")
     
-    while time.time() - start_wait < max_wait_time:
-        result = mail_handler.verify_account_live(email_login, mail_password)
-        
-        # Check if result contains CODE=...
-        if isinstance(result, str) and "CODE=" in result:
-            parts = result.split("|")
-            for p in parts:
-                if p.startswith("CODE="):
-                    code_val = p.split("=", 1)[1]
-                    if code_val and code_val.strip():
-                        recovery_code = code_val.strip()
-                        break
-        
-        if recovery_code:
-            break
-            
-        time.sleep(5)
+    def check_mail_for_code(timeout=30):
+        start_wait = time.time()
+        while time.time() - start_wait < timeout:
+            result = mail_handler.verify_account_live(email_login, mail_password)
+            if isinstance(result, str) and "CODE=" in result:
+                # Just need to confirm mail exists with code
+                return True
+            time.sleep(5)
+        return False
 
-    if not recovery_code:
-        raise Exception("Failed to retrieve recovery code from email within timeout.")
-
-    print(f"Got recovery code: {recovery_code}")
-
-    # 6. Enter Code
-    # User input: <input ... aria-label="Enter code" inputmode="numeric" ...>
-    print(f"Submitting code: {recovery_code}...")
+    # Try first attempt
+    if check_mail_for_code(timeout=30):
+        print("Mail found with code. Success!")
+        return True
+    
+    print("Mail not found in first attempt. Retrying with Option 2...")
+    
+    # 6. Retry Logic: Go Back -> Select Option 2 -> Continue -> Check Mail Again
     try:
-        # Check if we need to click "Continue" again or if we are stuck
-        # Try multiple selectors for the code input
-        selectors = [
-             (By.CSS_SELECTOR, 'input[aria-label="Enter code"]'),
-             (By.CSS_SELECTOR, 'input[name="security_code"]'),
-             (By.XPATH, "//input[@inputmode='numeric']"),
-             (By.XPATH, "//*[contains(text(), 'Enter code')]/following::input[1]")
-        ]
-        
-        code_input = None
-        for by, val in selectors:
+        # Click Back
+        # Try finding a UI back button first, else browser back
+        print("Clicking Back...")
+        back_buttons = driver.find_elements(By.XPATH, "//*[contains(@aria-label, 'Back') or contains(text(), 'Back')]")
+        if back_buttons:
              try:
-                 print(f"Looking for code input via {by}: {val}")
-                 code_input = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((by, val)))
-                 if code_input:
-                     break
+                 back_buttons[0].click()
              except:
-                 continue
-                 
-        if not code_input:
-             # Last ditch effort: dump page source to debug
-             # print("Page source during error:", driver.page_source[:5000]) # truncated 
-             raise Exception("Could not find code input field after trying multiple selectors.")
-
-        code_input.click()
-        code_input.clear()
-        code_input.send_keys(recovery_code)
-        time.sleep(1)
-        code_input.send_keys(Keys.ENTER)
+                 driver.back()
+        else:
+             driver.back()
         
-        # 7. Confirm success
-        # Wait for redirect to homepage (https://www.instagram.com/) AND text "Open Instagram"
-        print("Waiting for success confirmation (Open Instagram)...")
-        success_confirmed = False
-        start_confirm = time.time()
+        time.sleep(5)
         
-        while time.time() - start_confirm < 30: # 30s timeout
+        # Select Option 2
+        # Assuming a list of radio buttons or list items.
+        # Instagram recovery options often look like:
+        # <label ... ><input type="radio" ...></label>
+        print("Selecting Option 2...")
+        options = driver.find_elements(By.XPATH, "//input[@type='radio']")
+        
+        if len(options) >= 2:
             try:
-                curr_url = driver.current_url
-                # Remove trailing slash and params for check
-                clean_url = curr_url.split("?")[0].rstrip("/")
-                
-                # Check for "Open Instagram" context (case insensitive just in case)
-                body_text = driver.page_source
-                
-                if clean_url == "https://www.instagram.com" or "Open Instagram" in body_text:
-                    print("Confirmed: Redirected to Home and found 'Open Instagram'.")
-                    success_confirmed = True
-                    break
-            except:
-                pass
-            time.sleep(2)
+                # Click the label or the input
+                driver.execute_script("arguments[0].click();", options[1])
+                print("Selected Option 2.")
+            except Exception as e:
+                print(f"Failed to click Option 2: {e}")
+        else:
+            print("Less than 2 options found, trying general list items...")
+            # detailed selection logic might be needed here if structure differs
+            # fallback to whatever is clickable that looks like an option
+            pass
             
-        if not success_confirmed:
-             print(f"Warning: Did not get exact confirmation. URL: {driver.current_url}")
-             # Optional: raise exception if strict check is required
-             # raise Exception("Failed to confirm success screen.")
+        time.sleep(2)
         
-        print("Code submitted successfully.")
-        
+        # Click Continue again
+        print("Clicking Continue after selecting Option 2...")
+        try:
+            continue_btn = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Continue"][role="button"], button[type="submit"]'))
+            )
+            continue_btn.click()
+            time.sleep(3)
+        except Exception:
+            print("Continue button not found (2nd time), check if flow continued auto.")
+
+        # Check mail again (Second Attempt)
+        print("Checking for recovery mail (Attempt 2)...")
+        if check_mail_for_code(timeout=60): # Wait longer this time
+             print("Mail found with code (Attempt 2). Success!")
+             return True
+        else:
+             raise Exception("Mail not received after retrying Option 2.")
+
     except Exception as e:
-        raise Exception(f"Error entering recovery code: {e}")
+        raise Exception(f"Retry flow failed: {e}")
 
     return True
