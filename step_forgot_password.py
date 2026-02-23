@@ -106,19 +106,61 @@ def execute_step_forgot_password(driver, email_login, mail_password=None):
             
             # Select Option 2
             print("Selecting Option 2...")
-            options = driver.find_elements(By.XPATH, "//input[@type='radio']")
             
-            if len(options) >= 2:
+            # Strategy: Find unselected options
+            selected_option_found = False
+            
+            # 1. Look for radio inputs
+            radios = driver.find_elements(By.XPATH, "//input[@type='radio']")
+            if len(radios) >= 2:
+                print(f"Found {len(radios)} radio inputs. Selecting the second one.")
                 try:
-                    # Click the label or the input
-                    driver.execute_script("arguments[0].click();", options[1])
-                    print("Selected Option 2.")
-                except Exception as e:
-                    print(f"Failed to click Option 2: {e}")
-            else:
-                print("Less than 2 options found, trying general list items...")
-                pass
+                    driver.execute_script("arguments[0].click();", radios[1])
+                    selected_option_found = True
+                except:
+                    pass
+            
+            if not selected_option_found:
+                 # 2. Look for role="radio"
+                 role_radios = driver.find_elements(By.CSS_SELECTOR, '[role="radio"]')
+                 if len(role_radios) >= 2:
+                     print(f"Found {len(role_radios)} role='radio' elements. Selecting the second one.")
+                     try:
+                         driver.execute_script("arguments[0].click();", role_radios[1])
+                         selected_option_found = True
+                     except:
+                         pass
+
+            if not selected_option_found:
+                # 3. Look for list items that are clickable (often div with role button)
+                # Sometimes options are simply divs with text.
+                print("Fallback: Trying to find unselected option by checked state...")
                 
+                # Try finding checked one first to avoid re-clicking it
+                checked_xpaths = ["//input[@type='radio' and @checked]", "//*[@aria-checked='true']"]
+                checked_el = None
+                for xp in checked_xpaths:
+                    els = driver.find_elements(By.XPATH, xp)
+                    if els:
+                        checked_el = els[0]
+                        break
+                
+                # Now find all potential options
+                potential_options = driver.find_elements(By.CSS_SELECTOR, "li, [role='radio'], input[type='radio']")
+                
+                for opt in potential_options:
+                    if opt != checked_el:
+                         print("Clicking a potential unselected option...")
+                         try:
+                             driver.execute_script("arguments[0].click();", opt)
+                             selected_option_found = True
+                             break
+                         except:
+                             continue
+
+            if not selected_option_found:
+                print("Warning: Could not robustly identify a second option. Flow might fail.")
+
             time.sleep(2)
             
             # Click Continue again
