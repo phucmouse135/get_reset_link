@@ -134,7 +134,7 @@ def get_driver(headless=False, proxy_port=None, thread_id=0, max_threads=6):
     options.add_argument("--disable-software-rasterizer")
     
     # Tắt load ảnh để chạy nhanh
-    options.add_argument("--blink-settings=imagesEnabled=false") 
+    # options.add_argument("--blink-settings=imagesEnabled=false") 
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-notifications")
@@ -151,7 +151,7 @@ def get_driver(headless=False, proxy_port=None, thread_id=0, max_threads=6):
     options.add_argument(f"--user-data-dir={profile_dir}")
     
     prefs = {
-        "profile.managed_default_content_settings.images": 2,
+        # "profile.managed_default_content_settings.images": 2,
         "credentials_enable_service": False,
         "profile.password_manager_enabled": False
     }
