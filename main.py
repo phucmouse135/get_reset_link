@@ -231,6 +231,26 @@ def process_account(account, headless=False, status_cb=None, thread_id=0, max_th
              if mode == "get_link":
                  return "Done: get link and verify code"
 
+        # Step 3: Check Mail for verify if mode is 'check_mail' or 'all'
+        # Note: mail_handler.verify_account_live uses IMAP PEEK so it reads without marking as seen.
+        if mode in ("all", "check_mail"):
+             if status_cb:
+                 status_cb("Checking Mail...")
+             
+             # Retry checking mail because IMAP can be slow or code/link delayed
+             getlink_result = None
+             for _ in range(3): # simple retry 3 times
+                 try:
+                     getlink_result = mail_handler.verify_account_live(account.mail_login, account.mail_pass)
+                     if isinstance(getlink_result, str) and getlink_result.startswith("success"):
+                         break
+                 except Exception as e:
+                     print(f"Mail check error: {e}")
+                 time.sleep(2)
+
+             if not (isinstance(getlink_result, str) and getlink_result.startswith("success")):
+                 raise RuntimeError(f"Get link mail fail: {getlink_result}")
+
         if status_cb:
             status_cb("Done: Found Mail and Verified Code.")
         

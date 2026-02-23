@@ -540,30 +540,17 @@ class AutomationGUI(tk.Tk):
                 
                 # Verify/Initialize driver if needed
                 if mode != "check_mail":
-                    if driver is None:
-                        from gmx_core import get_driver # Late import to avoid circular dependency if any
-                        try:
-                            # Pass thread_id and max_threads to ensure proper tiling
-                            driver = get_driver(headless=False, thread_id=thread_id, max_threads=max_threads)
-                        except Exception as e:
-                            self.update_queue.put(("update_note", item_id, f"Driver Init Error: {e}"))
-                            self.task_queue.task_done()
-                            continue
-                    else:
-                        # Reset driver state for new task
-                        try:
-                            driver.delete_all_cookies()
-                            # Optional: navigate to blank or reset
-                        except Exception:
-                            # If driver is dead, recreate
-                            close_driver(driver)
-                            driver = None
-                            try:
-                                driver = get_driver(headless=False, thread_id=thread_id, max_threads=max_threads)
-                            except Exception as e:
-                                self.update_queue.put(("update_note", item_id, f"Driver Re-Init Error: {e}"))
-                                self.task_queue.task_done()
-                                continue
+                    # Always create new driver for each case
+                    close_driver(driver)
+                    driver = None
+
+                    from gmx_core import get_driver # Late import
+                    try:
+                        driver = get_driver(headless=False, thread_id=thread_id, max_threads=max_threads)
+                    except Exception as e:
+                        self.update_queue.put(("update_note", item_id, f"Driver Init Error: {e}"))
+                        self.task_queue.task_done()
+                        continue
 
                 # Update status to Running
                 self.update_queue.put(("update_note", item_id, "Running..."))
@@ -611,11 +598,10 @@ class AutomationGUI(tk.Tk):
                     success = False
                     error_msg = str(exc)
                     final_msg = f"Error: {error_msg}"
-                    
-                    # If it looks like a driver crash, force reset next time
-                    if "chrome not reachable" in str(exc).lower() or "disconnected" in str(exc).lower():
-                         close_driver(driver)
-                         driver = None
+                
+                # Always close driver after processing account
+                close_driver(driver)
+                driver = None
 
                 # Prepare final values for update
                 new_values = list(values)

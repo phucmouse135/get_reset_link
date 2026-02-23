@@ -80,88 +80,70 @@ def execute_step_forgot_password(driver, email_login, mail_password=None):
     except Exception:
         print("Continue button not found or not clickable, proceeding...")
 
-    # 5. Check for Code from Mail (First Attempt)
-    if not mail_password:
-        print("No mail password provided, skipping mail check.")
-        return True
-
-    print("Checking for recovery mail (Attempt 1)...")
+    # 5. Check for "Confirm your profile" in body instead of mail check
+    print("Checking for 'Confirm your profile' text in body...")
+    time.sleep(5)
+    body_text = driver.find_element(By.TAG_NAME, "body").text
     
-    def check_mail_for_code(timeout=30):
-        start_wait = time.time()
-        while time.time() - start_wait < timeout:
-            result = mail_handler.verify_account_live(email_login, mail_password)
-            if isinstance(result, str) and "CODE=" in result:
-                # Just need to confirm mail exists with code
-                return True
-            time.sleep(5)
-        return False
-
-    # Try first attempt
-    if check_mail_for_code(timeout=30):
-        print("Mail found with code. Success!")
-        return True
-    
-    print("Mail not found in first attempt. Retrying with Option 2...")
-    
-    # 6. Retry Logic: Go Back -> Select Option 2 -> Continue -> Check Mail Again
-    try:
-        # Click Back
-        # Try finding a UI back button first, else browser back
-        print("Clicking Back...")
-        back_buttons = driver.find_elements(By.XPATH, "//*[contains(@aria-label, 'Back') or contains(text(), 'Back')]")
-        if back_buttons:
-             try:
-                 back_buttons[0].click()
-             except:
-                 driver.back()
-        else:
-             driver.back()
+    if "Confirm your profile" in body_text:
+        print("'Confirm your profile' found. Going back to select another option...")
         
-        time.sleep(5)
-        
-        # Select Option 2
-        # Assuming a list of radio buttons or list items.
-        # Instagram recovery options often look like:
-        # <label ... ><input type="radio" ...></label>
-        print("Selecting Option 2...")
-        options = driver.find_elements(By.XPATH, "//input[@type='radio']")
-        
-        if len(options) >= 2:
-            try:
-                # Click the label or the input
-                driver.execute_script("arguments[0].click();", options[1])
-                print("Selected Option 2.")
-            except Exception as e:
-                print(f"Failed to click Option 2: {e}")
-        else:
-            print("Less than 2 options found, trying general list items...")
-            # detailed selection logic might be needed here if structure differs
-            # fallback to whatever is clickable that looks like an option
-            pass
-            
-        time.sleep(2)
-        
-        # Click Continue again
-        print("Clicking Continue after selecting Option 2...")
+        # 6. Go Back -> Select Option 2 -> Continue
         try:
-            continue_btn = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Continue"][role="button"], button[type="submit"]'))
+            # Click Back
+            # Try finding a UI back button first, else browser back
+            print("Clicking Back...")
+            back_buttons = driver.find_elements(By.XPATH, "//*[contains(@aria-label, 'Back') or contains(text(), 'Back')]")
+            if back_buttons:
+                 try:
+                     back_buttons[0].click()
+                 except:
+                     driver.back()
+            else:
+                 driver.back()
+            
+            time.sleep(5)
+            
+            # Select Option 2
+            print("Selecting Option 2...")
+            options = driver.find_elements(By.XPATH, "//input[@type='radio']")
+            
+            if len(options) >= 2:
+                try:
+                    # Click the label or the input
+                    driver.execute_script("arguments[0].click();", options[1])
+                    print("Selected Option 2.")
+                except Exception as e:
+                    print(f"Failed to click Option 2: {e}")
+            else:
+                print("Less than 2 options found, trying general list items...")
+                pass
+                
+            time.sleep(2)
+            
+            # Click Continue again
+            print("Clicking Continue after selecting Option 2...")
+            try:
+                continue_btn = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Continue"][role="button"], button[type="submit"]'))
+                )
+                continue_btn.click()
+                time.sleep(3)
+            except Exception:
+                print("Continue button not found (2nd time), check if flow continued auto.")
+
+            # Wait for "Confirm your profile" again
+            print("Waiting for 'Confirm your profile' screen...")
+            WebDriverWait(driver, 15).until(
+                lambda d: "Confirm your profile" in d.find_element(By.TAG_NAME, "body").text
             )
-            continue_btn.click()
-            time.sleep(3)
-        except Exception:
-            print("Continue button not found (2nd time), check if flow continued auto.")
+            print("Done: 'Confirm your profile' screen reached.")
 
-        # Check mail again (Second Attempt)
-        print("Checking for recovery mail (Attempt 2)...")
-        if check_mail_for_code(timeout=60): # Wait longer this time
-             print("Mail found with code (Attempt 2). Success!")
-             return True
-        else:
-             raise Exception("Mail not received after retrying Option 2.")
+        except Exception as e:
+            raise Exception(f"Retry flow failed: {e}")
 
-    except Exception as e:
-        raise Exception(f"Retry flow failed: {e}")
-
+    else:
+        print("'Confirm your profile' not found immediately, assuming flow is correct or different screen.")
+    
     return True
+
