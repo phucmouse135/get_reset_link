@@ -411,3 +411,4 @@ Symbols not available. Dumping unresolved backtrace:
 	lili.cutie@seznam.cz	hep59BV04ga1@@	fail	Error: Forgot password action failed: Could not find email input field
 	lilpeepxxx@seznam.cz	hep59BV04ga1@@	fail	Error: Forgot password action failed: Failed to retrieve recovery code from email within timeout.
 	lin1222@seznam.cz	hep59BV04ga1@@	fail	Error: Forgot password action failed: Failed to retrieve recovery code from email within timeout.
+giocomina	giocomina@gmx.de	9!4mPvL2Cc4Vglxi8ded	fail	Error: Get link mail fail: Fail: Timeout - Reset Mail not found
